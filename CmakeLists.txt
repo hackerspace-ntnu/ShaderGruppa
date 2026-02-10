@@ -33,6 +33,9 @@ target_include_directories(glad PUBLIC external/glad/include)
 
 add_executable(shadergruppa
   src/main.cpp
+  src/file_io.cpp
+  src/gl_shader.cpp
+  src/gl_texture.cpp
 )
 
 target_link_libraries(shadergruppa PRIVATE glfw glad)

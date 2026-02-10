@@ -1,90 +1,15 @@
 // src/main.cpp
 #include <cstdio>
-#include <string>
-#include <vector>
-#include <fstream>
-#include <sstream>
-#include <stdexcept>
 
 #include <glad/glad.h>
 #define GLFW_INCLUDE_NONE
 #include <GLFW/glfw3.h>
 
-static std::string readTextFile(const char* path) {
-    std::ifstream file(path, std::ios::binary);
-    if (!file) {
-        throw std::runtime_error(std::string("Failed to open file: ") + path);
-    }
-    std::ostringstream ss;
-    ss << file.rdbuf();
-    return ss.str();
-}
-
-static GLuint compileShader(GLenum type, const char* source, const char* label) {
-    GLuint s = glCreateShader(type);
-    glShaderSource(s, 1, &source, nullptr);
-    glCompileShader(s);
-
-    GLint ok = 0;
-    glGetShaderiv(s, GL_COMPILE_STATUS, &ok);
-    if (!ok) {
-        GLint len = 0;
-        glGetShaderiv(s, GL_INFO_LOG_LENGTH, &len);
-        std::vector<char> log((size_t)len + 1);
-        glGetShaderInfoLog(s, len, nullptr, log.data());
-        std::fprintf(stderr, "Shader compile failed (%s):\n%s\n", label, log.data());
-        glDeleteShader(s);
-        throw std::runtime_error("Shader compile failed");
-    }
-    return s;
-}
-
-static GLuint linkProgram(const std::vector<GLuint>& shaders, const char* label) {
-    GLuint p = glCreateProgram();
-    for (auto s : shaders) glAttachShader(p, s);
-    glLinkProgram(p);
-
-    GLint ok = 0;
-    glGetProgramiv(p, GL_LINK_STATUS, &ok);
-    if (!ok) {
-        GLint len = 0;
-        glGetProgramiv(p, GL_INFO_LOG_LENGTH, &len);
-        std::vector<char> log((size_t)len + 1);
-        glGetProgramInfoLog(p, len, nullptr, log.data());
-        std::fprintf(stderr, "Program link failed (%s):\n%s\n", label, log.data());
-        glDeleteProgram(p);
-        throw std::runtime_error("Program link failed");
-    }
-
-    for (auto s : shaders) glDetachShader(p, s);
-    return p;
-}
+#include "gl_shader.h"
+#include "gl_texture.h"
 
 static void glfwErrorCallback(int code, const char* msg) {
     std::fprintf(stderr, "GLFW error %d: %s\n", code, msg);
-}
-
-static GLuint createTextureRGBA8(int w, int h) {
-    GLuint tex = 0;
-    glGenTextures(1, &tex);
-    glBindTexture(GL_TEXTURE_2D, tex);
-
-    // Immutable storage is supported in GL 4.2+, so it's fine for GL 4.3.
-    glTexStorage2D(GL_TEXTURE_2D, 1, GL_RGBA8, w, h);
-
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-
-    glBindTexture(GL_TEXTURE_2D, 0);
-    return tex;
-}
-
-static void resizeTextureRGBA8(GLuint tex, int w, int h) {
-    glBindTexture(GL_TEXTURE_2D, tex);
-    glTexStorage2D(GL_TEXTURE_2D, 1, GL_RGBA8, w, h);
-    glBindTexture(GL_TEXTURE_2D, 0);
 }
 
 int main() {
@@ -110,7 +35,6 @@ int main() {
     glfwMakeContextCurrent(win);
     glfwSwapInterval(1);
 
-    // GLAD (glad.h-style) loader
     if (!gladLoadGLLoader((GLADloadproc)glfwGetProcAddress)) {
         std::fprintf(stderr, "Failed to load OpenGL via glad\n");
         glfwDestroyWindow(win);
@@ -127,23 +51,8 @@ int main() {
 
     GLuint progCompute = 0, progBlit = 0;
     try {
-        const auto compSrc = readTextFile("shaders/compute.comp");
-        const auto vertSrc = readTextFile("shaders/fullscreen.vert");
-        const auto fragSrc = readTextFile("shaders/blit.frag");
-
-        {
-            GLuint cs = compileShader(GL_COMPUTE_SHADER, compSrc.c_str(), "compute.comp");
-            progCompute = linkProgram({cs}, "compute");
-            glDeleteShader(cs);
-        }
-
-        {
-            GLuint vs = compileShader(GL_VERTEX_SHADER, vertSrc.c_str(), "fullscreen.vert");
-            GLuint fs = compileShader(GL_FRAGMENT_SHADER, fragSrc.c_str(), "blit.frag");
-            progBlit = linkProgram({vs, fs}, "blit");
-            glDeleteShader(vs);
-            glDeleteShader(fs);
-        }
+        progCompute = buildComputeProgramFromFile("shaders/compute.comp");
+        progBlit    = buildProgramFromFiles("shaders/fullscreen.vert", "shaders/blit.frag");
     } catch (const std::exception& e) {
         std::fprintf(stderr, "Shader build error: %s\n", e.what());
         glDeleteTextures(1, &tex);
@@ -152,11 +61,9 @@ int main() {
         return 1;
     }
 
-    // Uniforms
     const GLint uTimeLoc = glGetUniformLocation(progCompute, "uTime");
     const GLint uTexLoc  = glGetUniformLocation(progBlit, "uTex");
 
-    // Core profile requires a VAO bound for glDrawArrays
     GLuint vao = 0;
     glGenVertexArrays(1, &vao);
 
@@ -165,9 +72,7 @@ int main() {
 
         int fbW = 0, fbH = 0;
         glfwGetFramebufferSize(win, &fbW, &fbH);
-        if (fbW <= 0 || fbH <= 0) {
-            continue; // minimized
-        }
+        if (fbW <= 0 || fbH <= 0) continue;
 
         if (fbW != texW || fbH != texH) {
             texW = fbW;
@@ -179,7 +84,6 @@ int main() {
 
         const float t = (float)glfwGetTime();
 
-        // Compute pass: write into texture via imageStore
         glUseProgram(progCompute);
         if (uTimeLoc >= 0) glUniform1f(uTimeLoc, t);
 
@@ -189,14 +93,11 @@ int main() {
         const GLuint gy = (GLuint)((texH + 15) / 16);
         glDispatchCompute(gx, gy, 1);
 
-        // Ensure compute writes are visible to texture sampling
         glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT);
 
-        // Render pass: sample texture and draw fullscreen triangle
         glClear(GL_COLOR_BUFFER_BIT);
 
         glUseProgram(progBlit);
-
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, tex);
         if (uTexLoc >= 0) glUniform1i(uTexLoc, 0);
