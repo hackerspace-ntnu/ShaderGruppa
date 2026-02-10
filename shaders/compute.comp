@@ -1,0 +1,15 @@
+#version 460 core
+layout (local_size_x = 16, local_size_y = 16) in;
+
+layout (rgba8, binding = 0) uniform writeonly image2D img;
+uniform float uTime;
+
+void main() {
+    ivec2 p = ivec2(gl_GlobalInvocationID.xy);
+    ivec2 size = imageSize(img);
+    if (p.x >= size.x || p.y >= size.y) return;
+
+    vec2 uv = (vec2(p) + 0.5) / vec2(size);
+    vec3 col = 0.5 + 0.5 * cos(vec3(uv, uTime) * 6.2831 + vec3(0.0, 2.0, 4.0));
+    imageStore(img, p, vec4(col, 1.0));
+}
