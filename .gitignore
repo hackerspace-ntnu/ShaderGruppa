@@ -4,6 +4,7 @@
 *.sln
 
 # CMake
+CMakePresets.json
 out/
 build/
 CMakeFiles/
