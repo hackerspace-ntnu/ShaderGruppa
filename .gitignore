@@ -1,9 +1,28 @@
-/build/
-/out/
-/.vscode/
-*.obj
-*.o
+# Visual Studio
+.vs/
+*.vcxproj*
+*.sln
+
+# CMake
+out/
+build/
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+
+# Ninja
+.ninja*
+compile_commands.json
+
+# Binaries
 *.exe
+*.dll
+*.lib
 *.pdb
-*.ilk
-*.dSYM/
+
+# Debug/Release folders
+Debug/
+Release/
+
+# Logs
+*.log

@@ -38,6 +38,10 @@ add_executable(shadergruppa
   src/gl_texture.cpp
 )
 
+set_target_properties(shadergruppa PROPERTIES
+    OUTPUT_NAME "DiffusionSim"
+)
+
 target_link_libraries(shadergruppa PRIVATE glfw glad)
 
 if (WIN32)
