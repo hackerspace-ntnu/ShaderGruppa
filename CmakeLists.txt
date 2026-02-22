@@ -36,6 +36,7 @@ add_executable(shadergruppa
   src/file_io.cpp
   src/gl_shader.cpp
   src/gl_texture.cpp
+  src/menu.cpp
 )
 
 set_target_properties(shadergruppa PROPERTIES

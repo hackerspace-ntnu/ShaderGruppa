@@ -1,5 +1,6 @@
 // src/main.cpp
 #include <cstdio>
+#include <iostream>
 
 #include <glad/glad.h>
 #define GLFW_INCLUDE_NONE
@@ -7,6 +8,7 @@
 
 #include "gl_shader.h"
 #include "gl_texture.h"
+#include "menu.h"
 
 static void glfwErrorCallback(int code, const char* msg) {
     std::fprintf(stderr, "GLFW error %d: %s\n", code, msg);
@@ -50,8 +52,21 @@ int main() {
     GLuint tex = createTextureRGBA8(texW, texH);
 
     GLuint progCompute = 0, progBlit = 0;
+
     try {
-        progCompute = buildComputeProgramFromFile("shaders/compute.comp");
+        // Show shader menu
+        vector<std::string> shaders = findShaderFiles();
+        std::string selectedShader = fetchWantedFile(shaders);
+        
+        if (selectedShader.empty()) {
+            std::cerr << "No .comp files found in shaders directory :/" << std::endl;
+            glDeleteTextures(1, &tex);
+            glfwDestroyWindow(win);
+            glfwTerminate();
+            return 0;
+        }
+
+        progCompute = buildComputeProgramFromFile(selectedShader.c_str());
         progBlit    = buildProgramFromFiles("shaders/fullscreen.vert", "shaders/blit.frag");
     } catch (const std::exception& e) {
         std::fprintf(stderr, "Shader build error: %s\n", e.what());
@@ -61,11 +76,19 @@ int main() {
         return 1;
     }
 
-    const GLint uTimeLoc = glGetUniformLocation(progCompute, "uTime");
+    GLint uTimeLoc = glGetUniformLocation(progCompute, "uTime");
     const GLint uTexLoc  = glGetUniformLocation(progBlit, "uTex");
 
     GLuint vao = 0;
     glGenVertexArrays(1, &vao);
+
+    static bool menuKeyPressed = false;
+
+    std::cout << "\n=== CONTROLS ===\n";
+    std::cout << "M - Switch shader (opens menu in console)\n";
+    std::cout << "ESC - Exit\n\n";
+    std::cout << "Press M at any time to change shader\n\n";
+    std::cout.flush();
 
     while (!glfwWindowShouldClose(win)) {
         glfwPollEvents();
@@ -83,7 +106,8 @@ int main() {
         glViewport(0, 0, fbW, fbH);
 
         const float t = (float)glfwGetTime();
-
+        
+        // Generate image with compute shader
         glUseProgram(progCompute);
         if (uTimeLoc >= 0) glUniform1f(uTimeLoc, t);
 
@@ -92,11 +116,13 @@ int main() {
         const GLuint gx = (GLuint)((texW + 15) / 16);
         const GLuint gy = (GLuint)((texH + 15) / 16);
         glDispatchCompute(gx, gy, 1);
-
+        
+        // Wait for compute to finish
         glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT);
 
         glClear(GL_COLOR_BUFFER_BIT);
 
+        // Display with vertex + fragment shader
         glUseProgram(progBlit);
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, tex);
@@ -104,6 +130,73 @@ int main() {
 
         glBindVertexArray(vao);
         glDrawArrays(GL_TRIANGLES, 0, 3);
+
+        bool reloadShader = false;
+        if (glfwGetKey(win, GLFW_KEY_M) == GLFW_PRESS && !menuKeyPressed) {
+            menuKeyPressed = true;
+            reloadShader = true;
+        }
+        if (glfwGetKey(win, GLFW_KEY_M) == GLFW_RELEASE) {
+            menuKeyPressed = false;
+        }
+
+        if (reloadShader) {
+            // Freeze the current frame
+            glfwSwapBuffers(win);
+            
+            // Clear the console and show menu prominently
+            std::cout << "\n\n";
+            std::cout << "============================================\n";
+            std::cout << "  PAUSED - CLICK THIS CONSOLE WINDOW NOW\n";
+            std::cout << "============================================\n\n";
+            
+            // Flush to make sure it appears immediately
+            std::cout.flush();
+            
+            vector<std::string> shaders = findShaderFiles();
+            std::string newShader = fetchWantedFile(shaders);
+            
+            if (!newShader.empty()) {
+                try {
+                    glDeleteProgram(progCompute);
+                    progCompute = buildComputeProgramFromFile(newShader.c_str());
+                    uTimeLoc = glGetUniformLocation(progCompute, "uTime");
+                    
+                    std::cout << "\nShader loaded successfully!\n";
+                    std::cout << "Press SPACE in the graphics window to resume...\n\n";
+                    std::cout.flush();
+                } catch (const std::exception& e) {
+                    std::fprintf(stderr, "Reload failed: %s\n", e.what());
+                    std::cout << "Press SPACE in the graphics window to resume...\n\n";
+                    std::cout.flush();
+                }
+            } else {
+                // Terminate the program
+                std::cout << "\nExiting program...\n";
+                glfwSetWindowShouldClose(win, GLFW_TRUE);
+                continue;  // Skip the SPACE wait and go to cleanup
+            }
+            
+            // Wait for SPACE to resume
+            bool spacePressed = false;
+            while (!spacePressed && !glfwWindowShouldClose(win)) {
+                glfwPollEvents();
+                
+                if (glfwGetKey(win, GLFW_KEY_SPACE) == GLFW_PRESS) {
+                    spacePressed = true;
+                }
+                
+                // Sleep a bit to not burn CPU
+                glfwWaitEventsTimeout(0.1);
+            }
+            
+            // Clear the space key state
+            while (glfwGetKey(win, GLFW_KEY_SPACE) == GLFW_PRESS) {
+                glfwPollEvents();
+            }
+            
+            std::cout << "Resuming...\n\n";
+        }
 
         glfwSwapBuffers(win);
     }
