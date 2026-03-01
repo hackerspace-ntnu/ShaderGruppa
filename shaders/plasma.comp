@@ -3,10 +3,10 @@ layout (local_size_x = 16, local_size_y = 16) in;
 
 layout (rgba8, binding = 0) uniform writeonly image2D img;
 uniform float uTime;
-float scale = 1;
+float scale = 0.1;
 float timeScale = 1;
 vec3 Plasma(vec2 uv){
-    ivec2 scaled_uv = ivec2(uv * scale) - ivec2(scale) / 2;
+    ivec2 scaled_uv = ivec2(uv.x * scale,uv.y*scale) - ivec2(scale,scale)/2;
     float time = uTime * timeScale;
     float w1 = sin(uv.x + time);
     float w2 = sin(uv.y + time) + 0.5;
@@ -14,7 +14,7 @@ vec3 Plasma(vec2 uv){
     float r = sin(sqrt(uv.x*uv.x+uv.y*uv.y)+time);
     float finalvalue = r+ w1 + w2 + w3;
     vec3 finalWave = vec3(sin(finalvalue*3.1459)*0.5, cos(finalvalue*3.1459)*0.5, 0);
-    return finalWave;
+    return finalWave*0.5+0.5;
     }
 void main() {
     ivec2 p = ivec2(gl_GlobalInvocationID.xy);
