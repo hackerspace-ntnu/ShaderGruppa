@@ -1,0 +1,27 @@
+#version 460 core
+layout (local_size_x = 16, local_size_y = 16) in;
+
+layout (rgba8, binding = 0) uniform writeonly image2D img;
+uniform float uTime;
+float scale = 10;
+float timeScale = 1;
+vec3 Plasma(vec2 uv){
+    vec2 scaled_uv = vec2(uv)*scale;
+    float time = uTime * timeScale;
+    float w1 = sin(scaled_uv.x + time);
+    float w2 = sin(scaled_uv.y + time) + 0.5;
+    float w3 = sin(scaled_uv.x + scaled_uv.y + time);
+    float r = sin(sqrt(scaled_uv.x*scaled_uv.x+scaled_uv.y*scaled_uv.y)+time);
+    float finalvalue = r+ w1 + w2 + w3;
+    vec3 finalWave = vec3(sin(finalvalue*3.1459)*0.5, cos(finalvalue*3.1459)*0.5, 0);
+    return finalWave*0.5+0.5;
+    }
+void main() {
+    ivec2 p = ivec2(gl_GlobalInvocationID.xy);
+    ivec2 size = imageSize(img);
+    if (p.x >= size.x || p.y >= size.y) return;
+
+    vec2 uv = (vec2(p) + 0.5) / vec2(size);
+    //vec3 col = 0.5 + 0.5 * cos(vec3(uv, uTime) * 6.2831 + vec3(0.0, 2.0, 4.0));
+    imageStore(img, p, vec4(Plasma(uv), 1.0));
+}
