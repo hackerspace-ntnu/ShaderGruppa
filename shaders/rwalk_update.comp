@@ -1,0 +1,46 @@
+#version 460 core
+layout(local_size_x = 256) in;
+
+// Binding 1 = read (ping), Binding 2 = write (pong)
+layout(std430, binding = 1) readonly buffer ParticlesIn {
+    vec2 positionsIn[];
+};
+layout(std430, binding = 2) writeonly buffer ParticlesOut {
+    vec2 positionsOut[];
+};
+
+uniform float uTime;
+uniform float dt;
+
+const float PI  = 3.1415926535;
+const int NUM = 10; // Amount of particles
+const float D = 0.001; // Diffution const
+
+float random(vec2 seed) {
+    return fract(sin(dot(seed, vec2(12.9898, 78.233))) * 43758.5453123);
+}
+
+// Box–Muller transform (super sick concept)
+// Basically a way to sample values from normal distribution
+vec2 gaussianStep(vec2 seed) {
+    // u1 and u2 are independent values from N(0,1)
+    float u1 = max(random(seed), 1e-7);
+    float u2 = random(seed + vec2(1.23, 4.56));
+    float r = sqrt(-2.0 * log(u1));
+    float theta = 2.0 * PI * u2;
+    return vec2(r * cos(theta), r * sin(theta));
+}
+
+void main() {
+    // Make sure only one thread pr particle
+    uint id = gl_GlobalInvocationID.x;
+    if (id >= uint(NUM)) return;
+
+    vec2 pos = positionsIn[id]; // Read current binding
+    vec2 seed = vec2(float(id) + 0.5, uTime);
+    vec2 delta = gaussianStep(seed) * sqrt(2.0 * D * dt);
+
+    // Write to binding
+    // fract ensures particles are inside 
+    positionsOut[id] = fract(pos + delta);
+}

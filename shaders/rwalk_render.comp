@@ -1,0 +1,32 @@
+#version 460 core
+layout(local_size_x = 16, local_size_y = 16) in;
+
+// Binding 1 = ping (the updated positions after swap)
+layout(std430, binding = 1) readonly buffer Particles {
+    vec2 positions[];
+};
+
+layout(rgba8, binding = 0) uniform writeonly image2D img;
+
+// Amount of particles
+const int NUM = 10;
+
+void main() {
+    ivec2 pix = ivec2(gl_GlobalInvocationID.xy);
+    ivec2 size = imageSize(img);
+    if (pix.x >= size.x || pix.y >= size.y) return; 
+
+    vec2 uv = (vec2(pix) + 0.5) / vec2(size);
+    vec3 color = vec3(0.0);
+    float radius = 0.01;
+
+    for (int i = 0; i < NUM; i++) {
+        float dist = length(uv - positions[i]);
+
+        // Draw particles
+        color += smoothstep(radius, radius * 0.4, dist) * vec3(0.2, 0.8, 1.0);
+    }
+
+    // Use clamp to avoid getting invalid color values (e.g if particles overlap)
+    imageStore(img, pix, vec4(clamp(color, 0.0, 1.0), 1.0));
+}
