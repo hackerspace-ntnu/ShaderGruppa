@@ -54,7 +54,7 @@ hvordan bruke shaders:
   - Beregnet for å skrive direkte til en output-tekstur bundet som et bilde via binding 0 (f.eks. `layout(rgba8, binding = 0) uniform writeonly image2D outImage;`).
   - Vanlige uniforms: `uTime` (float), `dt` (float). Threadgroup-størrelse i koden er vanligvis delt i 16×16 (dispatche beregnet fra teksturstørrelse).
   - Navnekonvensjon (prosjektet): render-/update-par kan navngis systematisk i shaders-mappen (inspill fra Frederik?).
-  Hvordan bruke: skriv en compute som tar `outImage` og eventuelle uniforms,
+  - Hvordan bruke: skriv en compute som tar `outImage` og eventuelle uniforms,
 	- kall `glDispatchCompute` med grid beregnet fra output-størrelsen og sørg for `glMemoryBarrier` før tekstursampling.
 	- for å legge til en ny compute-shader:
   1. Legg til en .comp-fil i shaders/.
