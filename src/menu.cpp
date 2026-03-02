@@ -13,13 +13,15 @@ vector<std::string> findShaderFiles() {
 
     // Check if folder exists
     if (!std::filesystem::exists(shadersDir)) {
-        std::cout << "Error: shaders directory not found!" << std::endl;
+        std::cout << "Error: shaders directory not found!\n";
         return shaderFiles;
     }
 
     // Collect all .comp files
     for (const auto& entry : std::filesystem::directory_iterator(shadersDir)) {
-        if (entry.is_regular_file() && entry.path().extension() == ".comp") {
+        const std::string filename = entry.path().filename().string();
+
+        if (entry.is_regular_file() && entry.path().extension() == ".comp" && filename.find("_update") == std::string::npos) {
             shaderFiles.push_back(entry.path().string());
         }
     }
@@ -31,7 +33,7 @@ vector<std::string> findShaderFiles() {
 
 std::string fetchWantedFile(vector<std::string> files) {
     if (files.empty()) {
-            std::cout << "No .comp files found in shaders directory :/" << std::endl;
+            std::cout << "No .comp files found in shaders directory :/\n";
         return "";
     }
 
@@ -39,7 +41,7 @@ std::string fetchWantedFile(vector<std::string> files) {
     std::cout << "\n=== Shader Menu ===\n";
     for (size_t i = 0; i < files.size(); i++) {
         std::filesystem::path p(files[i]);
-        std::cout << "[" << i + 1 << "] " << p.filename().string() << std::endl;
+        std::cout << "[" << i + 1 << "] " << p.filename().string() << "\n";
     }
     std::cout << "[0] Exit\n";
     std::cout << "\nSelect shader: ";
@@ -53,7 +55,7 @@ std::string fetchWantedFile(vector<std::string> files) {
     }
 
     if (choice < 1 || choice > static_cast<int>(files.size())) {
-        std::cout << "Invalid choice! Using default shader." << std::endl;
+        std::cout << "Invalid choice! Using default shader." << "\n";
         return files[0];
     }
 
