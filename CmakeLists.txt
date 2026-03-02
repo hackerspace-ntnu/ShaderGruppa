@@ -56,6 +56,7 @@ endif()
 
 # Copy shaders next to the binary so relative paths work
 add_custom_command(TARGET shadergruppa POST_BUILD
+  COMMAND ${CMAKE_COMMAND} -E rm -rf $<TARGET_FILE_DIR:shadergruppa>/shaders # Removes deleted files from memory
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:shadergruppa>/shaders
   COMMAND ${CMAKE_COMMAND} -E copy_directory
           ${CMAKE_SOURCE_DIR}/shaders
