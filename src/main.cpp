@@ -96,8 +96,13 @@ int main() {
     GLuint vao = 0;
     glGenVertexArrays(1, &vao);
 
-    static bool menuKeyPressed = false;
+    // Mouse rotation state
+    double mouseLastX = 0.0, mouseLastY = 0.0;
+    float uYaw = 0.0f, uPitch = 0.0f;
+    bool mouseFirstClick = true;
 
+    // Console menu
+    static bool menuKeyPressed = false;
     printControls();
 
     float prevTime = (float)glfwGetTime();
@@ -126,6 +131,13 @@ int main() {
         if (uTimeLoc >= 0) glUniform1f(uTimeLoc, t);
         GLint dtLoc = glGetUniformLocation(progCompute, "dt");
         if (dtLoc >= 0) glUniform1f(dtLoc, dt);
+
+        // Set mouse rotation uniforms (ignored by shaders that don't use them)
+        GLint yawLoc = glGetUniformLocation(progCompute, "uYaw");
+        GLint pitchLoc = glGetUniformLocation(progCompute, "uPitch");
+
+        if (yawLoc >= 0) glUniform1f(yawLoc, uYaw);
+        if (pitchLoc >= 0) glUniform1f(pitchLoc, uPitch);
 
         pp.bindBuffers();
         
@@ -160,6 +172,23 @@ int main() {
         if (uTexLoc >= 0) glUniform1i(uTexLoc, 0);
         glBindVertexArray(vao);
         glDrawArrays(GL_TRIANGLES, 0, 3);
+
+        // Update rotation from mouse (hold left button to rotate)
+        if (glfwGetMouseButton(win, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS) {
+            double mx, my;
+            glfwGetCursorPos(win, &mx, &my);
+
+            if (!mouseFirstClick) {
+                uYaw += (float)(mx - mouseLastX) * 0.005f;
+                uPitch += (float)(my - mouseLastY) * 0.005f;
+                uPitch = std::clamp(uPitch, -1.5f, 1.5f);
+            }
+            mouseLastX = mx;
+            mouseLastY = my;
+            mouseFirstClick = false;
+        } else {
+            mouseFirstClick = true;
+        }
 
         if (!pollMenuKey(win, progCompute, uTimeLoc, pp))
             continue;

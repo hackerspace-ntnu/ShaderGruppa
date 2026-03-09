@@ -67,7 +67,8 @@ void printControls() {
     std::cout << "\n=== CONTROLS ===\n";
     std::cout << "M - Switch shader (opens menu in console)\n";
     std::cout << "ESC - Exit\n\n";
-    std::cout << "Press M at any time to change shader\n\n";
+    std::cout << "Press M at any time to change shader\n";
+    std::cout << "LMB + drag - Rotate (for 3D shaders)\n";
     std::cout.flush();
 }
 
