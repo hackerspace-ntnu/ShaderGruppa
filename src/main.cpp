@@ -11,6 +11,7 @@
 #include "pingpong.h"
 #include "menu.h"
 #include "gl_png_to_texture.h"
+#include "shader_timestamp.h"
 
 static void glfwErrorCallback(int code, const char* msg) {
     std::fprintf(stderr, "GLFW error %d: %s\n", code, msg);
