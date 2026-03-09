@@ -1,4 +1,7 @@
 #include "gl_png_to_texture.h"
+#include "lodepng.h"
+#include <vector>
+#include <stdexcept>
 
 GLuint loadTextureFromPNG(const char* path)
 {
