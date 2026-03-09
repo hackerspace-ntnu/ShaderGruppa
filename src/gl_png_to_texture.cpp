@@ -3,7 +3,7 @@
 #include <vector>
 #include <stdexcept>
 
-GLuint loadTextureFromPNG(const char* path)
+GLuint loadTextureFromPNG(const char* path, unsigned targetWidth, unsigned targetHeight)
 {
     std::vector<unsigned char> pixels;
     unsigned width = 0, height = 0;
@@ -11,6 +11,37 @@ GLuint loadTextureFromPNG(const char* path)
     unsigned error = lodepng::decode(pixels, width, height, path);
     if (error)
         throw std::runtime_error(lodepng_error_text(error));
+
+    // Flip image vertically
+    unsigned bytesPerPixel = 4; // RGBA
+    for (unsigned y = 0; y < height / 2; y++) {
+        for (unsigned x = 0; x < width; x++) {
+            unsigned idx1 = (y * width + x) * bytesPerPixel;
+            unsigned idx2 = ((height - 1 - y) * width + x) * bytesPerPixel;
+            for (unsigned i = 0; i < bytesPerPixel; i++) {
+                std::swap(pixels[idx1 + i], pixels[idx2 + i]);
+            }
+        }
+    }
+
+    // Resize if needed
+    if (width != targetWidth || height != targetHeight) {
+        std::vector<unsigned char> resized(targetWidth * targetHeight * bytesPerPixel);
+        for (unsigned y = 0; y < targetHeight; y++) {
+            for (unsigned x = 0; x < targetWidth; x++) {
+                unsigned srcX = (x * width) / targetWidth;
+                unsigned srcY = (y * height) / targetHeight;
+                unsigned srcIdx = (srcY * width + srcX) * bytesPerPixel;
+                unsigned dstIdx = (y * targetWidth + x) * bytesPerPixel;
+                for (unsigned i = 0; i < bytesPerPixel; i++) {
+                    resized[dstIdx + i] = pixels[srcIdx + i];
+                }
+            }
+        }
+        pixels = std::move(resized);
+        width = targetWidth;
+        height = targetHeight;
+    }
 
     GLuint tex;
     glGenTextures(1, &tex);

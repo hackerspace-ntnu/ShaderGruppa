@@ -49,16 +49,18 @@ int main() {
     std::fprintf(stdout, "GL Vendor:   %s\n", glGetString(GL_VENDOR));
     std::fprintf(stdout, "GL Renderer: %s\n", glGetString(GL_RENDERER));
     std::fprintf(stdout, "GL Version:  %s\n", glGetString(GL_VERSION));
+    
+
+    int texW = 960, texH = 540;
+    GLuint tex = createTextureRGBA8(texW, texH);
+
     GLuint inputTex = 0;
     try {
-        inputTex = loadTextureFromPNG("assets/test.png");
+        inputTex = loadTextureFromPNG("assets/test.png", texW, texH);
     }
     catch (const std::exception& e) {
         std::fprintf(stderr, "Image load error: %s\n", e.what());
     }
-
-    int texW = 960, texH = 540;
-    GLuint tex = createTextureRGBA8(texW, texH);
 
     GLuint progCompute = 0, progBlit = 0;
     PingPong pp;
@@ -164,7 +166,6 @@ int main() {
 
         glfwSwapBuffers(win);
     }
-
     glDeleteVertexArrays(1, &vao);
     glDeleteTextures(1, &tex);
     pp.destroy();

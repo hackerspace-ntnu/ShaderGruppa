@@ -9,7 +9,6 @@ uniform float uTime;
 void main() {
     ivec2 coords = ivec2(gl_GlobalInvocationID.xy);
     ivec2 size = imageSize(outputImage);
-    
     if (coords.x >= size.x || coords.y >= size.y) return;
     
     vec4 color = imageLoad(inputImage, coords);
