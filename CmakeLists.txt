@@ -60,7 +60,7 @@ endif()
 
 # Copy shaders and assets next to the binary so relative paths work
 add_custom_command(TARGET shadergruppa POST_BUILD
-  COMMAND ${CMAKE_COMMAND} -E rm -rf $<TARGET_FILE_DIR:shadergruppa>/shaders # Removes deleted files from memory
+  COMMAND ${CMAKE_COMMAND} -E rm -rf $<TARGET_FILE_DIR:shadergruppa>/shaders
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:shadergruppa>/shaders
   COMMAND ${CMAKE_COMMAND} -E copy_directory
           ${CMAKE_SOURCE_DIR}/shaders
@@ -70,3 +70,16 @@ add_custom_command(TARGET shadergruppa POST_BUILD
           ${CMAKE_SOURCE_DIR}/assets
           $<TARGET_FILE_DIR:shadergruppa>/assets
 )
+
+# Make a custom command that generates a header when a shader changes 
+file(GLOB_RECURSE SHADER_FILES "${CMAKE_SOURCE_DIR}/shaders/*")
+
+add_custom_command(
+    OUTPUT "${CMAKE_BINARY_DIR}/shader_timestamp.h"
+    COMMAND ${CMAKE_COMMAND} -E echo "/* shader rebuild trigger */" > "${CMAKE_BINARY_DIR}/shader_timestamp.h"
+    DEPENDS ${SHADER_FILES}
+    COMMENT "Shaders changed, triggering rebuild"
+)
+
+target_sources(shadergruppa PRIVATE "${CMAKE_BINARY_DIR}/shader_timestamp.h")
+target_include_directories(shadergruppa PRIVATE "${CMAKE_BINARY_DIR}")
