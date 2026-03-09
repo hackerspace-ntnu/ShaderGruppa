@@ -54,13 +54,7 @@ int main() {
     int texW = 960, texH = 540;
     GLuint tex = createTextureRGBA8(texW, texH);
 
-    GLuint inputTex = 0;
-    try {
-        inputTex = loadTextureFromPNG("assets/test.png", texW, texH);
-    }
-    catch (const std::exception& e) {
-        std::fprintf(stderr, "Image load error: %s\n", e.what());
-    }
+    
 
     GLuint progCompute = 0, progBlit = 0;
     PingPong pp;
@@ -88,6 +82,17 @@ int main() {
         glfwDestroyWindow(win);
         glfwTerminate();
         return 1;
+    }
+    // Extract shader filename without path/extension
+    std::string shaderName = std::filesystem::path(selectedShader).stem().string();
+    std::string imagePath = "assets/" + shaderName + ".png";
+
+    GLuint inputTex = 0;
+    try {
+        inputTex = loadTextureFromPNG(imagePath.c_str(), texW, texH);
+    }
+    catch (const std::exception& e) {
+        std::fprintf(stderr, "Image load error: %s\n", e.what());
     }
 
     GLint uTimeLoc = glGetUniformLocation(progCompute, "uTime");
