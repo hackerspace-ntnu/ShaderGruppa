@@ -21,3 +21,5 @@ void resizeTextureRGBA8(GLuint tex, int w, int h) {
     glTexStorage2D(GL_TEXTURE_2D, 1, GL_RGBA8, w, h);
     glBindTexture(GL_TEXTURE_2D, 0);
 }
+
+

@@ -1,0 +1,16 @@
+#version 430 core
+layout(local_size_x = 16, local_size_y = 16) in;
+
+layout(rgba8, binding = 0) uniform readonly image2D inputImage;
+layout(rgba8, binding = 1) uniform writeonly image2D outputImage;
+
+uniform float uTime;
+
+void main() {
+    ivec2 coords = ivec2(gl_GlobalInvocationID.xy);
+    ivec2 size = imageSize(outputImage);
+    if (coords.x >= size.x || coords.y >= size.y) return;
+    
+    vec4 color = imageLoad(inputImage, coords);
+    imageStore(outputImage, coords, color);
+}

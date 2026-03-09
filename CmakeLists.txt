@@ -20,7 +20,6 @@ FetchContent_Declare(
 FetchContent_MakeAvailable(glfw)
 
 # glad (vendored in repo)
-# IMPORTANT: pick the correct .c file name: glad.c is most common
 if (EXISTS "${CMAKE_SOURCE_DIR}/external/glad/src/glad.c")
   add_library(glad STATIC external/glad/src/glad.c)
 elseif (EXISTS "${CMAKE_SOURCE_DIR}/external/glad/src/gl.c")
@@ -38,7 +37,12 @@ add_executable(shadergruppa
   src/gl_texture.cpp
   src/pingpong.cpp
   src/menu.cpp
+  src/gl_png_to_texture.cpp
+  external/lodepng/lodepng.cpp
 )
+
+# Allow #include "lodepng.h"
+target_include_directories(shadergruppa PRIVATE external/lodepng)
 
 set_target_properties(shadergruppa PROPERTIES
     OUTPUT_NAME "DiffusionSim"
@@ -54,11 +58,15 @@ else()
   target_link_libraries(shadergruppa PRIVATE GL dl pthread)
 endif()
 
-# Copy shaders next to the binary so relative paths work
+# Copy shaders and assets next to the binary so relative paths work
 add_custom_command(TARGET shadergruppa POST_BUILD
   COMMAND ${CMAKE_COMMAND} -E rm -rf $<TARGET_FILE_DIR:shadergruppa>/shaders # Removes deleted files from memory
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:shadergruppa>/shaders
   COMMAND ${CMAKE_COMMAND} -E copy_directory
           ${CMAKE_SOURCE_DIR}/shaders
           $<TARGET_FILE_DIR:shadergruppa>/shaders
+  COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:shadergruppa>/assets
+  COMMAND ${CMAKE_COMMAND} -E copy_directory
+          ${CMAKE_SOURCE_DIR}/assets
+          $<TARGET_FILE_DIR:shadergruppa>/assets
 )

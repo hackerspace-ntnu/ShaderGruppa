@@ -10,6 +10,7 @@
 #include "gl_texture.h"
 #include "pingpong.h"
 #include "menu.h"
+#include "gl_png_to_texture.h"
 
 static void glfwErrorCallback(int code, const char* msg) {
     std::fprintf(stderr, "GLFW error %d: %s\n", code, msg);
@@ -48,9 +49,18 @@ int main() {
     std::fprintf(stdout, "GL Vendor:   %s\n", glGetString(GL_VENDOR));
     std::fprintf(stdout, "GL Renderer: %s\n", glGetString(GL_RENDERER));
     std::fprintf(stdout, "GL Version:  %s\n", glGetString(GL_VERSION));
+    
 
     int texW = 960, texH = 540;
     GLuint tex = createTextureRGBA8(texW, texH);
+
+    GLuint inputTex = 0;
+    try {
+        inputTex = loadTextureFromPNG("assets/test.png", texW, texH);
+    }
+    catch (const std::exception& e) {
+        std::fprintf(stderr, "Image load error: %s\n", e.what());
+    }
 
     GLuint progCompute = 0, progBlit = 0;
     PingPong pp;
@@ -118,7 +128,24 @@ int main() {
         if (dtLoc >= 0) glUniform1f(dtLoc, dt);
 
         pp.bindBuffers();
-        glBindImageTexture(0, tex, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA8);
+        
+        // Bind input texture only if shader has the uniform (for shaders that use it)
+        GLint inputImageLoc = glGetUniformLocation(progCompute, "inputImage");
+        if (inputTex != 0 && inputImageLoc >= 0) {
+            glBindImageTexture(0, inputTex, 0, GL_FALSE, 0, GL_READ_ONLY, GL_RGBA8);
+        }
+        
+        // Always bind output at binding 1 for new shaders, but also check binding 0 for old ones
+        GLint outImageLoc1 = glGetUniformLocation(progCompute, "outputImage");
+        GLint outImageLoc0 = glGetUniformLocation(progCompute, "img");
+        
+        if (outImageLoc1 >= 0) {
+            // New style: output at binding 1
+            glBindImageTexture(1, tex, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA8);
+        } else if (outImageLoc0 >= 0) {
+            // Old style: output at binding 0
+            glBindImageTexture(0, tex, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA8);
+        }
 
         const GLuint gx = (GLuint)((texW + 15) / 16);
         const GLuint gy = (GLuint)((texH + 15) / 16);
@@ -139,7 +166,6 @@ int main() {
 
         glfwSwapBuffers(win);
     }
-
     glDeleteVertexArrays(1, &vao);
     glDeleteTextures(1, &tex);
     pp.destroy();
