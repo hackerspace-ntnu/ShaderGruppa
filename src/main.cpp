@@ -89,11 +89,15 @@ int main() {
     std::string imagePath = "assets/" + shaderName + ".png";
 
     GLuint inputTex = 0;
-    try {
-        inputTex = loadTextureFromPNG(imagePath.c_str(), texW, texH);
-    }
-    catch (const std::exception& e) {
-        std::fprintf(stderr, "Image load error: %s\n", e.what());
+
+    // Skip texture loading for shaders that don't need input textures
+    if (shaderName != "3dblock") {
+        try {
+            inputTex = loadTextureFromPNG(imagePath.c_str(), texW, texH);
+        }
+        catch (const std::exception& e) {
+            std::fprintf(stderr, "Image load error: %s\n", e.what());
+        }
     }
 
     GLint uTimeLoc = glGetUniformLocation(progCompute, "uTime");
