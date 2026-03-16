@@ -35,7 +35,7 @@ vec3 cubeColor(vec3 p, vec3 cubeCenter, float halfSize) {
      * Hver av de 6 sidene får en unik farge.
      *
      * p: hitpunktet på kubens overflate 
-     * cubeCenter: kubens senterpunkt
+     * cubeCenter: kubens senter
      * halfSize: halvparten av kubens sidelengde
      *
      * Returnerer vec3: RGB-farge for den trufne siden
@@ -51,8 +51,7 @@ vec3 cubeColor(vec3 p, vec3 cubeCenter, float halfSize) {
         return local.z > 0.0 ? vec3(0,0,1) : vec3(1,0.5,0);
 }
 
-// Skal brukes senere
-vec3 calcNormal(vec3 p) {
+vec3 calcNormal(vec3 point) {
     /*
      * Beregner overflatenormalen i et hitpunkt via finite differences.
      * Sampler SDF-en i små forskyvninger langs hver akse og beregner gradienten.
@@ -63,9 +62,9 @@ vec3 calcNormal(vec3 p) {
      */
     float eps = 0.001;
     return normalize(vec3(
-        sdBox(p + vec3(eps, 0, 0), vec3(0.5)).x - sdBox(p - vec3(eps, 0, 0), vec3(0.5)).x,
-        sdBox(p + vec3(0, eps, 0), vec3(0.5)).x - sdBox(p - vec3(0, eps, 0), vec3(0.5)).x,
-        sdBox(p + vec3(0, 0, eps), vec3(0.5)).x - sdBox(p - vec3(0, 0, eps), vec3(0.5)).x
+        sdBox(point + vec3(eps, 0, 0), vec3(0.5)).x - sdBox(point - vec3(eps, 0, 0), vec3(0.5)).x,
+        sdBox(point + vec3(0, eps, 0), vec3(0.5)).x - sdBox(point - vec3(0, eps, 0), vec3(0.5)).x,
+        sdBox(point + vec3(0, 0, eps), vec3(0.5)).x - sdBox(point - vec3(0, 0, eps), vec3(0.5)).x
     ));
 }
 
@@ -82,12 +81,20 @@ float rayMarch(vec3 ro, vec3 rd) {
      *   -1.0: ingen treff (maks iterasjoner eller utenfor rekkevidde)
      */
     float t = 0.0;
+
     for (int i = 0; i < 64; i++) {
-        float d = sdBox(ro + rd * t, vec3(0.5)).x;
-        if (d < 0.001) return t;
-        t += d;
+        vec3 point = ro + rd * t;
+
+        float dBox = sdBox(point, vec3(0.5)).x;
+
+        if (dBox < 0.001) {
+            return t;
+        }
+        
+        t += dBox;
         if (t > 20.0) break;
     }
+
     return -1.0;
 }
 
@@ -138,10 +145,25 @@ void main() {
 
     if (t > 0.0) {
         vec3 point = ro + rd * t;
-        fragColor = cubeColor(point, vec3(0.0), 0.5);
-        /*vec3 normal = calcNormal(point);*/
-        /*float diffuse = max(dot(normal, normalize(vec3(1,1,1))), 0.0);*/
-        /*fragColor = fragColor * (0.2 + diffuse);*/
+
+        vec3 color = cubeColor(point, vec3(0.0), 0.5);
+        vec3 surfaceNormal = calcNormal(point);
+
+        vec3 lightDir = cam * normalize(vec3(-1.0, 1.0, -1.0)); // lysretning, skrått fra oppe venstre til nede høyre
+        vec3 viewDir  = normalize(-rd); // retning mot kamera
+
+        // Diffus del
+        float diffuse = max(dot(surfaceNormal, lightDir), 0.0);
+
+        // Spekulær del
+        vec3 halfVec  = normalize(lightDir + viewDir);
+        float shininess = 50.0; // høyere = skarpere shine
+        float specular  = pow(max(dot(surfaceNormal, halfVec), 0.0), shininess);
+
+        float min_bright = 0.3; // minimum for brightness
+
+        // Endelig farge
+        fragColor = color * (min_bright + (1.0-min_bright) * diffuse) + vec3(0.5) * specular;
     }
 
     imageStore(img, pix, vec4(fragColor, 1.0));
