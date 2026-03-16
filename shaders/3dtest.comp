@@ -5,6 +5,7 @@ uniform float uTime;
 uniform float uYaw;
 uniform float uPitch;
 
+
 vec4 sdBox(vec3 point, vec3 center) {
     /*
      * Beregner signert avstand fra et punkt til en boks sentrert i origo.
@@ -28,7 +29,7 @@ vec4 sdBox(vec3 point, vec3 center) {
     
     return vec4(f.x, f.yzw * sign(point));
 }
-vec4 sdBoxFrame(vec3 point, vec3 center, float e)
+float sdBoxFrame(vec3 point, vec3 center, float e)
 {
     vec3 local = abs(point) - center;
     vec3 q = abs(local + e) - e;
@@ -43,15 +44,9 @@ vec4 sdBoxFrame(vec3 point, vec3 center, float e)
 
     float dist = min(min(d1, d2), d3);
 
-    vec3 normal;
-    if (dist == d1)
-        normal = c1 == vec3(0.0) ? vec3(sign(local.x), 0.0, 0.0) : normalize(c1) * vec3(sign(local.x), sign(q.y), sign(q.z));
-    else if (dist == d2)
-        normal = c2 == vec3(0.0) ? vec3(0.0, sign(local.y), 0.0) : normalize(c2) * vec3(sign(q.x), sign(local.y), sign(q.z));
-    else
-        normal = c3 == vec3(0.0) ? vec3(0.0, 0.0, sign(local.z)) : normalize(c3) * vec3(sign(q.x), sign(q.y), sign(local.z));
+    
 
-    return vec4(dist, normal);
+    return dist;
 }
 
 vec3 cubeColor(vec3 p, vec3 cubeCenter, float halfSize) {
@@ -76,6 +71,10 @@ vec3 cubeColor(vec3 p, vec3 cubeCenter, float halfSize) {
         return local.z > 0.0 ? vec3(0,0,1) : vec3(1,0.5,0);
 }
 
+vec3 colorByNormal(vec3 normal, mat3 cam) {
+    return normalize(vec3(normal) - cam*vec3(sqrt(1/3),sqrt(1/3),sqrt(1/3)))/2 + vec3(0.3);}
+
+
 // Skal brukes senere
 vec3 calcNormal(vec3 p) {
     /*
@@ -88,11 +87,11 @@ vec3 calcNormal(vec3 p) {
      */
     float eps = 0.001;
     return normalize(vec3(
-        sdBox(p + vec3(eps, 0, 0), vec3(0.5)).x - sdBox(p - vec3(eps, 0, 0), vec3(0.5)).x,
-        sdBox(p + vec3(0, eps, 0), vec3(0.5)).x - sdBox(p - vec3(0, eps, 0), vec3(0.5)).x,
-        sdBox(p + vec3(0, 0, eps), vec3(0.5)).x - sdBox(p - vec3(0, 0, eps), vec3(0.5)).x
-    ));
-}
+        sdBoxFrame(p + vec3(eps, 0, 0), vec3(0.5),0.05) - sdBoxFrame(p - vec3(eps, 0, 0), vec3(0.5),0.05),
+        sdBoxFrame(p + vec3(0, eps, 0), vec3(0.5),0.05) - sdBoxFrame(p - vec3(0, eps, 0), vec3(0.5),0.05),
+        sdBoxFrame(p + vec3(0, 0, eps), vec3(0.5),0.05) - sdBoxFrame(p - vec3(0, 0, eps), vec3(0.5),0.05)
+    ));; 
+    }
 
 float rayMarch(vec3 ro, vec3 rd) {
     /*
@@ -108,7 +107,7 @@ float rayMarch(vec3 ro, vec3 rd) {
      */
     float t = 0.0;
     for (int i = 0; i < 64; i++) {
-        float d = sdBoxFrame(ro + rd * t, vec3(0.5),0.05).x;
+        float d = sdBoxFrame(ro + rd * t, vec3(0.5),0.05);
         if (d < 0.001) return t;
         t += d;
         if (t > 20.0) break;
@@ -163,9 +162,10 @@ void main() {
 
     if (t > 0.0) {
         vec3 point = ro + rd * t;
-        fragColor = vec3(1,1,1);
-        fragColor = cubeColor(point, vec3(0.0), 0.5);
-        /*vec3 normal = calcNormal(point);*/
+        //fragColor = vec3(1,1,1);
+        //fragColor = cubeColor(point, vec3(0.0), 0.5);
+        vec3 normal = calcNormal(point);
+        fragColor = colorByNormal(normal,cam);
         /*float diffuse = max(dot(normal, normalize(vec3(1,1,1))), 0.0);*/
         /*fragColor = fragColor * (0.2 + diffuse);*/
     }
