@@ -17,6 +17,10 @@ const float SAMPLE_DIST = 0.05; // sample distance
 const float CAM_DIST = 6.0; // camera distance from origin
 const float INF = 1./0.; // infinity, kind of
 
+// for later:
+//const float N_LUFT = 1.0;
+//const float N_GLASS = 1.5;
+
 float seed = 0.0;
 
 float random(vec3 p) {
@@ -64,7 +68,7 @@ float get_density(in vec3 p) {
 
     switch (object_id) {   
         case 1:
-            return 0.8; // sphere density
+            return 2.0; // sphere density
         case 2:
             return 10.0; // ground density
     }
@@ -85,25 +89,12 @@ vec3 get_color(in vec3 p) {
     return vec3(0.);
 }
 
-float get_specular(in vec3 p) {
-    int object_id = get_object_id(p);
-
-    switch (object_id) {   
-        case 1:
-            return 0.3; // sphere specular
-        case 2:
-            return 0.05; // ground specular
-    }
-  
-    return 0.;
-}
-
 float ray_march(in vec3 ro, in vec3 rd) {
     float d = 0.;
 
     for (int i = 0; i < MAX_STEPS; ++i) {
         vec3 p = ro + rd * d;
-        float ds = total_sdf(p);
+        float ds = sphere_sdf(p);
     
         if (ds < SURF_DIST) {
             return d;
@@ -135,18 +126,19 @@ float compute_intensity(in vec3 p) {
     vec3 l = get_light(); // light position
     vec3 ld = normalize(l - p); // light direction
 
-    vec3 q = p;
+    vec3 q = p + ld * random(p) * SAMPLE_DIST; // jitter start, with random offset
     float intensity = 1.; // initial intensity
 
     for (int i = 0; i < MAX_STEPS; ++i) {
-        float ds = total_sdf(q);
+        float ds = sphere_sdf(q); // only use sphere sdf, total sdf causes artifacts
         float density = get_density(q);
 
         float step_size;
         if (ds > 0.0) {
             step_size = ds;
         } else {
-            step_size = SAMPLE_DIST * (random(q) + 0.5); // jittering
+            // jittering to avoid color banding artifacts
+            step_size = SAMPLE_DIST * (random(q) + 0.5); 
         }
 
         q += step_size * ld;
@@ -157,48 +149,59 @@ float compute_intensity(in vec3 p) {
     return intensity;
 }
 
-vec3 compute_color(in vec3 p0, in vec3 rd) {
+vec3 compute_color(in vec3 r0, in vec3 rd) {
     vec3 c = vec3(0.0);
     float transmittance = 1.0;
-    float d = 0.0;
+
+    float d = random(r0) * SAMPLE_DIST; // start with an offset to avoid banding
     
     for (int i = 0; i < MAX_STEPS; ++i) {
-        vec3 p = p0 + rd * d;
-        float ds = total_sdf(p);
+        vec3 p = r0 + rd * d;
+        float ds = sphere_sdf(p);
         vec3 color = get_color(p);
         float density = get_density(p);
-        float intensity = compute_intensity(p);  
-
-        // Hard shadow
+        float intensity = compute_intensity(p); 
+            
         vec3 n = get_normal(p); 
-        float shadow_d = ray_march(p + 10.*n*SURF_DIST, normalize(get_light() - p));
-        if (shadow_d < length(get_light() - p)) intensity *= 0.3;
-    
-        if (ds > SAMPLE_DIST)
-            d += ds;
-        else
-            d += SAMPLE_DIST;
+        vec3 light_pos = get_light();
 
-        c += color * (1. - exp(-density * SAMPLE_DIST)) * transmittance * intensity;
+        // Find shadow only when on surface
+        if (abs(ds) < SAMPLE_DIST) {
+
+            // Hard shadow
+            float shadow_d = ray_march(p + n * 0.1, normalize(light_pos - p));
+            if (shadow_d < length(light_pos - p)) intensity *= 0.3;
+        }
+
+        if (ds > SAMPLE_DIST) {
+            d += ds;
+        } else {
+            d += SAMPLE_DIST;
+        }
+  
+        vec3 ld = normalize(light_pos - p);
+        float diffuse = max(0.0, dot(n, ld));
+        float ambient = 0.05;
+
+        c += color * (ambient + (1.0 - ambient) * diffuse * (1. - exp(-density * SAMPLE_DIST))) * transmittance * intensity;
         transmittance *= exp(-density * SAMPLE_DIST);
     
         if (transmittance < 0.01 || d > MAX_DIST) break;
     }
 
-    c += vec3(0.1, 0.15, 0.2) * transmittance; // himmel/bakgrunnsfarge
+    c += vec3(0.1, 0.15, 0.2) * transmittance; // sky background
 
     return c;
 }
 
-float compute_reflection(in vec3 p, in vec3 n, in vec3 c, in float f) {
-      vec3 l = get_light(); // light Position
-      vec3 ld = normalize(l-p); // light Vector
-      vec3 r = reflect(-ld, n); // reflected vector of sunlight
-      float s = clamp(dot(r, normalize(c - p)), 0., 1.); // dot product between reflected light and camera vector
-
-      return pow(s, 10.0) * f;
+vec3 shade_plane(in vec3 p) {
+    vec3 n = vec3(0, 1, 0);
+    vec3 ld = normalize(get_light() - p);
+    float diffuse = max(0.0, dot(n, ld));
+    float shadow_d = ray_march(p + n * 0.05, ld);
+    float shadow = (shadow_d < length(get_light() - p)) ? 0.2 : 1.0;
+    return vec3(0.8, 0.55, 0.3) * (0.08 + 0.92 * diffuse * shadow);
 }
-
 
 mat3 rotY(float a) {
     float c = cos(a), s = sin(a);
@@ -219,8 +222,6 @@ vec3 trans(float r, float theta, float phi) {
 }
 
 void main() {
-    vec3 fragColor = vec3(0.);
-    
     ivec2 pix  = ivec2(gl_GlobalInvocationID.xy);
     ivec2 size = imageSize(img);
     if (pix.x >= size.x || pix.y >= size.y) return;
@@ -247,8 +248,16 @@ void main() {
     vec3 ro = (T * vec4(co, 1.)).xyz; // ray origin w.r.t world
     vec3 rd = (T * vec4(cd, 0.)).xyz; // ray vector w.r.t world
 
-    // color
-    fragColor = compute_color(ro, rd);
+    // Analytic intersection
+    float t_plane = (rd.y < -0.0001) ? -ro.y / rd.y : INF;
+    float t_sphere = ray_march(ro, rd);
+
+    vec3 fragColor;
+    if (t_plane < t_sphere) {
+        fragColor = shade_plane(ro + rd * t_plane);
+    } else {
+        fragColor = compute_color(ro, rd);
+    }
   
     imageStore(img, pix, vec4(fragColor, 1.0));
 }
