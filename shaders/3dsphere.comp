@@ -17,13 +17,13 @@ const float SAMPLE_DIST = 0.05; // sample distance
 const float CAM_DIST = 6.0; // camera distance from origin
 const float INF = 1./0.; // infinity, kind of
 
-// for later:
-//const float N_LUFT = 1.0;
-//const float N_GLASS = 1.5;
+const float N_LUFT = 1.0;
+const float N_GLASS = 1.5;
 
 struct Material {
     vec3 color;
     float density;
+    float refraction_index;
 };
 
 struct Hit {
@@ -67,10 +67,17 @@ float total_sdf(in vec3 p) {
     return d;
 }
 
+// Fresnel approx
+float fresnel_schlick(float n1, float n2, vec3 normal, vec3 rd) {
+    float r0 = pow((n1 - n2) / (n1 + n2), 2.0);
+    float cosTheta = max(0.0, dot(-rd, normal));
+    return r0 + (1.0 - r0) * pow(1.0 - cosTheta, 5.0);
+}
+
 Material get_material(in vec3 p) {
-    if (sphere_sdf(p) < 0.0) return Material(vec3(0.5, 0.7, 1.0), 2.0);
-    if (plane_sdf(p) < 0.0)  return Material(vec3(0.8, 0.55, 0.3), 10.0);
-    return Material(vec3(0.0), 0.0);
+    if (sphere_sdf(p) < 0.0) return Material(vec3(0.5, 0.7, 1.0), 2.0, N_GLASS);
+    if (plane_sdf(p) < 0.0)  return Material(vec3(0.8, 0.55, 0.3), 10.0, N_LUFT);
+    return Material(vec3(0.0), 0.0, 0.0);
 }
 
 
@@ -152,10 +159,10 @@ vec3 compute_color(in vec3 r0, in vec3 rd) {
         vec3 n = get_normal(p); 
         vec3 light_pos = get_light();
 
-        // Find shadow only when on surface
+        // Do only when on surface
         if (abs(ds) < SAMPLE_DIST) {
 
-            // Hard shadow
+            // Add hard shadow
             float shadow_d = ray_march(p + n * 0.1, normalize(light_pos - p));
             if (shadow_d < length(light_pos - p)) intensity *= 0.3;
         }
@@ -169,7 +176,8 @@ vec3 compute_color(in vec3 r0, in vec3 rd) {
         vec3 ld = normalize(light_pos - p);
         float diffuse = max(0.0, dot(n, ld));
         float ambient = 0.05;
-
+        
+        // Add all modifying layers, most significantly Beer-Lamberts law
         c += color * (ambient + (1.0 - ambient) * diffuse * (1. - exp(-density * SAMPLE_DIST))) * transmittance * intensity;
         transmittance *= exp(-density * SAMPLE_DIST);
     
@@ -187,22 +195,23 @@ Hit scene_intersect(in vec3 ro, in vec3 rd) {
 
     if (t_plane < t_sphere) {
         vec3 p = ro + rd * t_plane;
-        return Hit(t_plane, vec3(0,1,0), get_material(p), true);
+        return Hit(t_plane, vec3(0,1,0), get_material(p), false);
     } else {
         vec3 p = ro + rd * t_sphere;
-        return Hit(t_sphere, get_normal(p), get_material(p), false);
+        return Hit(t_sphere, get_normal(p), get_material(p), true);
     }
 
 }
 
-
 vec3 shade_plane(in vec3 p) {
+    vec3 color = vec3(0.8, 0.55, 0.3);
     vec3 n = vec3(0, 1, 0);
     vec3 ld = normalize(get_light() - p);
     float diffuse = max(0.0, dot(n, ld));
+    float ambient = 0.08;
     float shadow_d = ray_march(p + n * 0.05, ld);
     float shadow = (shadow_d < length(get_light() - p)) ? 0.2 : 1.0;
-    return vec3(0.8, 0.55, 0.3) * (0.08 + 0.92 * diffuse * shadow);
+    return color * (ambient + (1.0 - ambient) * diffuse * shadow);
 }
 
 vec3 shade(in Hit hit, in vec3 ro, in vec3 rd) {
@@ -211,10 +220,44 @@ vec3 shade(in Hit hit, in vec3 ro, in vec3 rd) {
     vec3 p = ro + rd * hit.t;
 
     if (hit.is_object) {
-        return shade_plane(p); // exact
-    } else {
         return compute_color(ro, rd); 
+    } else {
+        return shade_plane(p); // exact
     }
+}
+
+vec3 ray_trace(in vec3 ro, in vec3 rd) {
+    vec3 color = vec3(0.0);
+    float weight = 1.0;
+
+    for (int bounce = 0; bounce < 3; ++bounce) {
+        Hit hit = scene_intersect(ro, rd);
+        vec3 p = ro + rd * hit.t;
+
+        if (hit.t >= MAX_DIST) {
+            color += weight * vec3(0.1, 0.15, 0.2); // sky background
+            break;
+        }
+
+        if (!hit.is_object) {
+            color += weight * shade_plane(p);
+            break;
+        }
+
+        // Add sphere color and reflect
+        Material mat = get_material(p);
+        float reflectivity = fresnel_schlick(N_LUFT, N_GLASS, hit.normal, rd);
+
+        vec3 local_color = compute_color(ro, rd);
+        color += weight * (1.0 - reflectivity) * local_color;
+
+        // Next bounce
+        ro = p + hit.normal * 0.05; // start with offset
+        rd = reflect(rd, hit.normal);
+        weight *= reflectivity; // reduce weight by the reflectivity 
+    }
+
+    return color;
 }
 
 mat3 rotY(float a) {
@@ -262,8 +305,7 @@ void main() {
     vec3 ro = (T * vec4(co, 1.)).xyz; // ray origin w.r.t world
     vec3 rd = (T * vec4(cd, 0.)).xyz; // ray vector w.r.t world
 
-    Hit hit = scene_intersect(ro, rd); // return closest hit
-    vec3 fragColor = shade(hit, ro, rd);
+    vec3 fragColor = ray_trace(ro, rd);
 
     imageStore(img, pix, vec4(fragColor, 1.0));
 }
