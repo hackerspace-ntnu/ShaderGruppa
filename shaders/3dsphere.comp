@@ -17,6 +17,15 @@ const float SAMPLE_DIST = 0.05; // sample distance
 const float CAM_DIST = 6.0; // camera distance from origin
 const float INF = 1./0.; // infinity, kind of
 
+float seed = 0.0;
+
+float random(vec3 p) {
+    seed += 1.0;
+    p += uTime + seed; // perturb the input
+    p  = fract(p * .1031);
+    p += dot(p, p.zyx + 31.32);
+    return fract((p.x + p.y) * p.z);
+}
 
 // Fixed light position
 vec3 get_light() {
@@ -50,6 +59,19 @@ int get_object_id(in vec3 p) {
     return 0;
 }
 
+float get_density(in vec3 p) {
+    int object_id = get_object_id(p);
+
+    switch (object_id) {   
+        case 1:
+            return 0.8; // sphere density
+        case 2:
+            return 10.0; // ground density
+    }
+  
+    return 0.;
+}
+
 vec3 get_color(in vec3 p) {
     int object_id = get_object_id(p);
 
@@ -76,54 +98,68 @@ float get_specular(in vec3 p) {
     return 0.;
 }
 
-float ray_march(in vec3 ro, in vec3 rd) {
-    float d = 0.;
-
-    for (int i = 0; i < MAX_STEPS; ++i) {
-        vec3 p = ro + rd * d;
-        float ds = total_sdf(p);
-    
-        if (ds < SURF_DIST) {
-            return d;
-        }
-      
-        d += ds;
+vec3 get_normal(in vec3 p) { 
+    vec2 eps = vec2(.01,0); // epsilon
+    vec3 n = vec3(
+        total_sdf(p+eps.xyy) - total_sdf(p-eps.xyy),
+        total_sdf(p+eps.yxy) - total_sdf(p-eps.yxy),
+        total_sdf(p+eps.yyx) - total_sdf(p-eps.yyx)
+    );
   
-        if (d > MAX_DIST) {
-            return INF;
+    return normalize(n);
+}
+
+vec3 compute_color(in vec3 r0, in vec3 rd) {
+    
+    vec3 c = vec3(0.0);
+    float transmittance = 1.0;
+    float d = 0.0;
+    
+    for (int i = 0; i < MAX_STEPS; ++i) {
+        vec3 p = r0 + rd * d;
+        float ds = total_sdf(p);
+        vec3 color = get_color(p);
+        float density = get_density(p);
+    
+        if (ds > SAMPLE_DIST) {
+            d += ds;
+        } else {
+            d += SAMPLE_DIST * (random(p) + 0.5); // jittering
         }
+
+        c += color * (1. - exp(-density * SAMPLE_DIST)) * transmittance;
+        transmittance *= exp(-density * SAMPLE_DIST);
+    
+        if (transmittance < 0.01 || d > MAX_DIST) break;
     }
 
-    return INF;
+    return c;
 }
 
-vec3 get_normal(in vec3 p) { 
-      vec2 eps = vec2(.01,0); // epsilon
-      vec3 n = vec3(
-            total_sdf(p+eps.xyy) - total_sdf(p-eps.xyy),
-            total_sdf(p+eps.yxy) - total_sdf(p-eps.yxy),
-            total_sdf(p+eps.yyx) - total_sdf(p-eps.yyx)
-      );
-  
-      return normalize(n);
-}
+float compute_intensity(in vec3 p) {
+    vec3 l = get_light(); // light position
+    vec3 ld = normalize(l - p); // light direction
 
-float compute_contrast(in vec3 p, in vec3 n) {
-      // Directional light
-      vec3 l = get_light(); // light Position
-      vec3 ld = normalize(l-p); // light Vector
-  
-      float dif = dot(n,ld); // diffuse light
-      dif = clamp(dif,0.,1.); // clamp so it doesnt go below 0
-  
-      // Shadows
-      float d = ray_march(p + 10.*n*SURF_DIST, ld);
+    vec3 q = p;
+    float intensity = 15.; // initial intensity
 
-      if (d < length(l-p)) {
-            dif *= 0.3; // add shadow
-      }
+    for (int i = 0; i < MAX_STEPS; ++i) {
+        float ds = total_sdf(q);
+        float density = get_density(q);
 
-      return dif;
+        float step_size;
+        if (ds > 0.0) {
+            step_size = ds;
+        } else {
+            step_size = SAMPLE_DIST * (random(q) + 0.5); // jittering
+        }
+
+        q += step_size * ld;
+        intensity *= exp(-density * step_size);
+
+        if (dot(l - p, l - q) < 0.0 || intensity < 0.01) break;
+    }
+    return intensity;
 }
 
 float compute_reflection(in vec3 p, in vec3 n, in vec3 c, in float f) {
@@ -183,16 +219,8 @@ void main() {
     vec3 ro = (T * vec4(co, 1.)).xyz; // ray origin w.r.t world
     vec3 rd = (T * vec4(cd, 0.)).xyz; // ray vector w.r.t world
 
-    // Find the surface point
-    float d = ray_march(ro, rd);
-    vec3 p = ro + rd * d;
-    vec3 n = get_normal(p);
-
-    fragColor = get_color(p - n*SURF_DIST); // apply color and texture
-    fragColor *= compute_contrast(p, n); // apply lighting and shading
-  
-    // Apply specular lighting
-    fragColor += compute_reflection(p, n, ro, get_specular(p-n*SURF_DIST));
+    // color
+    fragColor = compute_color(ro, rd);
   
     imageStore(img, pix, vec4(fragColor, 1.0));
 }
