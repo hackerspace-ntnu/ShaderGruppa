@@ -1,0 +1,198 @@
+#version 460 core
+
+layout(local_size_x = 16, local_size_y = 16) in;
+layout(rgba8, binding = 0) uniform writeonly image2D img;
+
+uniform float uTime;
+uniform float uYaw;
+uniform float uPitch;
+
+// Constants
+const float PI = 3.1415925359;
+const float TWO_PI = 6.2831852;
+const int MAX_STEPS = 200; // max ray marching steps
+const float MAX_DIST = 100.0; // max ray marching distance
+const float SURF_DIST = 0.01; // surface distance
+const float SAMPLE_DIST = 0.05; // sample distance
+const float CAM_DIST = 6.0; // camera distance from origin
+const float INF = 1./0.; // infinity, kind of
+
+
+// Fixed light position
+vec3 get_light() {
+    return vec3(0,5.,6.); // arbitrary positioning
+}
+
+// Noisy ground surface SDF
+float plane_sdf(in vec3 p) {
+    return p.y;
+}
+
+// Sphere SDF
+float sphere_sdf(in vec3 p) { 
+    vec4 s = vec4(0, 1.2, 0, 1);
+    return length(p - s.xyz) - s.w;
+}
+
+
+float total_sdf(in vec3 p) {
+    float sphereDist = sphere_sdf(p);
+    float planeDist = plane_sdf(p);
+    float d = min(sphereDist, planeDist);
+
+    return d;
+}
+
+int get_object_id(in vec3 p) {
+    if (sphere_sdf(p) < 0.0) return 1;
+    if (plane_sdf(p) < 0.0) return 2;
+
+    return 0;
+}
+
+vec3 get_color(in vec3 p) {
+    int object_id = get_object_id(p);
+
+    switch (object_id) {   
+        case 1:
+            return vec3(0.5, 0.7, 1.0); // sphere color
+        case 2:
+            return vec3(0.8, 0.55, 0.3); // ground color
+    }    
+
+    return vec3(0.);
+}
+
+float get_specular(in vec3 p) {
+    int object_id = get_object_id(p);
+
+    switch (object_id) {   
+        case 1:
+            return 0.3; // sphere specular
+        case 2:
+            return 0.05; // ground specular
+    }
+  
+    return 0.;
+}
+
+float ray_march(in vec3 ro, in vec3 rd) {
+    float d = 0.;
+
+    for (int i = 0; i < MAX_STEPS; ++i) {
+        vec3 p = ro + rd * d;
+        float ds = total_sdf(p);
+    
+        if (ds < SURF_DIST) {
+            return d;
+        }
+      
+        d += ds;
+  
+        if (d > MAX_DIST) {
+            return INF;
+        }
+    }
+
+    return INF;
+}
+
+vec3 get_normal(in vec3 p) { 
+      vec2 eps = vec2(.01,0); // epsilon
+      vec3 n = vec3(
+            total_sdf(p+eps.xyy) - total_sdf(p-eps.xyy),
+            total_sdf(p+eps.yxy) - total_sdf(p-eps.yxy),
+            total_sdf(p+eps.yyx) - total_sdf(p-eps.yyx)
+      );
+  
+      return normalize(n);
+}
+
+float compute_contrast(in vec3 p, in vec3 n) {
+      // Directional light
+      vec3 l = get_light(); // light Position
+      vec3 ld = normalize(l-p); // light Vector
+  
+      float dif = dot(n,ld); // diffuse light
+      dif = clamp(dif,0.,1.); // clamp so it doesnt go below 0
+  
+      // Shadows
+      float d = ray_march(p + 10.*n*SURF_DIST, ld);
+
+      if (d < length(l-p)) {
+            dif *= 0.3; // add shadow
+      }
+
+      return dif;
+}
+
+float compute_reflection(in vec3 p, in vec3 n, in vec3 c, in float f) {
+      vec3 l = get_light(); // light Position
+      vec3 ld = normalize(l-p); // light Vector
+      vec3 r = reflect(-ld, n); // reflected vector of sunlight
+      float s = clamp(dot(r, normalize(c - p)), 0., 1.); // dot product between reflected light and camera vector
+
+      return pow(s, 10.0) * f;
+}
+
+
+mat3 rotY(float a) {
+    float c = cos(a), s = sin(a);
+    return mat3( c, 0.0, -s,
+                0.0, 1.0, 0.0,
+                s, 0.0, c);
+}
+
+mat3 rotX(float a) {
+    float c = cos(a), s = sin(a);
+    return mat3(1.0, 0.0, 0.0,
+                0.0,  c,  s,
+                0.0,  -s, c);
+}
+
+vec3 trans(float r, float theta, float phi) {
+    return vec3(-r*cos(phi)*sin(theta), r*sin(phi), -r*cos(phi)*cos(theta)); // camera translation in spherical coords;
+}
+
+void main() {
+    vec3 fragColor = vec3(0.);
+    
+    ivec2 pix  = ivec2(gl_GlobalInvocationID.xy);
+    ivec2 size = imageSize(img);
+    if (pix.x >= size.x || pix.y >= size.y) return;
+
+    // UV-coords centered at origin, normalized by height
+    vec2 uv = (vec2(pix) - 0.5 * vec2(size)) / float(size.y);
+
+    // Building camera matrices
+    mat3 cam = rotY(uYaw) * rotX(uPitch);
+    vec3 translation = trans(CAM_DIST, uYaw, uPitch);
+
+    // Transformation matrix
+    mat4 T = mat4(
+        vec4(cam[0], 0.0), // x-axis
+        vec4(cam[1], 0.0), // y-axis
+        vec4(cam[2], 0.0), // z-axis
+        vec4(translation, 1.0) // translation
+    );
+
+    vec3 co = vec3(0,0,0); // camera origin
+    vec3 cd = normalize(vec3(uv,1)); // camera ray vector
+
+    // Initialize ray
+    vec3 ro = (T * vec4(co, 1.)).xyz; // ray origin w.r.t world
+    vec3 rd = (T * vec4(cd, 0.)).xyz; // ray vector w.r.t world
+
+    // Find the surface point
+    float d = ray_march(ro, rd);
+    vec3 p = ro + rd * d;
+    vec3 n = get_normal(p);
+
+    fragColor = get_color(p - n*SURF_DIST); // apply color and texture
+    fragColor *= compute_contrast(p, n); // apply lighting and shading
+  
+    // Apply specular lighting
+    fragColor += compute_reflection(p, n, ro, get_specular(p-n*SURF_DIST));
+  
+    imageStore(img, pix, vec4(fragColor, 1.0));
+}
