@@ -33,13 +33,12 @@ struct Hit {
     bool is_object; // sphere = object, plane = non-object
 };
 
-float seed = 0.0;
-
 float random(vec3 p) {
-    seed += 1.0;
+    float seed = 1.0;
     p += uTime + seed; // perturb the input
-    p  = fract(p * .1031);
+    p = fract(p * .1031);
     p += dot(p, p.zyx + 31.32);
+
     return fract((p.x + p.y) * p.z);
 }
 
