@@ -98,6 +98,27 @@ float get_specular(in vec3 p) {
     return 0.;
 }
 
+float ray_march(in vec3 ro, in vec3 rd) {
+    float d = 0.;
+
+    for (int i = 0; i < MAX_STEPS; ++i) {
+        vec3 p = ro + rd * d;
+        float ds = total_sdf(p);
+    
+        if (ds < SURF_DIST) {
+            return d;
+        }
+      
+        d += ds;
+  
+        if (d > MAX_DIST) {
+            return INF;
+        }
+    }
+
+    return INF;
+}
+
 vec3 get_normal(in vec3 p) { 
     vec2 eps = vec2(.01,0); // epsilon
     vec3 n = vec3(
@@ -109,39 +130,13 @@ vec3 get_normal(in vec3 p) {
     return normalize(n);
 }
 
-vec3 compute_color(in vec3 r0, in vec3 rd) {
-    
-    vec3 c = vec3(0.0);
-    float transmittance = 1.0;
-    float d = 0.0;
-    
-    for (int i = 0; i < MAX_STEPS; ++i) {
-        vec3 p = r0 + rd * d;
-        float ds = total_sdf(p);
-        vec3 color = get_color(p);
-        float density = get_density(p);
-    
-        if (ds > SAMPLE_DIST) {
-            d += ds;
-        } else {
-            d += SAMPLE_DIST * (random(p) + 0.5); // jittering
-        }
-
-        c += color * (1. - exp(-density * SAMPLE_DIST)) * transmittance;
-        transmittance *= exp(-density * SAMPLE_DIST);
-    
-        if (transmittance < 0.01 || d > MAX_DIST) break;
-    }
-
-    return c;
-}
 
 float compute_intensity(in vec3 p) {
     vec3 l = get_light(); // light position
     vec3 ld = normalize(l - p); // light direction
 
     vec3 q = p;
-    float intensity = 15.; // initial intensity
+    float intensity = 1.; // initial intensity
 
     for (int i = 0; i < MAX_STEPS; ++i) {
         float ds = total_sdf(q);
@@ -160,6 +155,39 @@ float compute_intensity(in vec3 p) {
         if (dot(l - p, l - q) < 0.0 || intensity < 0.01) break;
     }
     return intensity;
+}
+
+vec3 compute_color(in vec3 p0, in vec3 rd) {
+    vec3 c = vec3(0.0);
+    float transmittance = 1.0;
+    float d = 0.0;
+    
+    for (int i = 0; i < MAX_STEPS; ++i) {
+        vec3 p = p0 + rd * d;
+        float ds = total_sdf(p);
+        vec3 color = get_color(p);
+        float density = get_density(p);
+        float intensity = compute_intensity(p);  
+
+        // Hard shadow
+        vec3 n = get_normal(p); 
+        float shadow_d = ray_march(p + 10.*n*SURF_DIST, normalize(get_light() - p));
+        if (shadow_d < length(get_light() - p)) intensity *= 0.3;
+    
+        if (ds > SAMPLE_DIST)
+            d += ds;
+        else
+            d += SAMPLE_DIST;
+
+        c += color * (1. - exp(-density * SAMPLE_DIST)) * transmittance * intensity;
+        transmittance *= exp(-density * SAMPLE_DIST);
+    
+        if (transmittance < 0.01 || d > MAX_DIST) break;
+    }
+
+    c += vec3(0.1, 0.15, 0.2) * transmittance; // himmel/bakgrunnsfarge
+
+    return c;
 }
 
 float compute_reflection(in vec3 p, in vec3 n, in vec3 c, in float f) {
